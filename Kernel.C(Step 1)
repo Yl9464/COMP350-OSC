@@ -1,0 +1,186 @@
+/* kernel.c */
+// Nina A
+// This is my adjusted kernel.c file that satisfies step 1 for Project C
+
+/* Function Declarations */
+void printString(char*);
+void printChar(char);
+void readString(char*);
+void readSector(char*, int);
+void handleInterrupt21(int, int, int, int);
+int matchFileName(char*, char*);
+void readFile(char*, char*, int*);
+
+/* External Assembly Functions */
+extern void makeInterrupt21();
+extern int interrupt(int, int, int, int, int);
+
+int main() {
+   // char line[80];
+    char buffer[13312];
+    int sectorsRead;
+
+    makeInterrupt21();
+
+    interrupt(0x21, 3, "messag", buffer, &sectorsRead); //Attempt to read ' messag'
+
+    if (sectorsRead > 0) {
+        interrupt(0x21, 0, buffer, 0, 0);
+    } else {
+        interrupt(0x21, 0, "messag not found\r\n", 0, 0);
+    }
+
+    while (1);
+
+    /* Initialize Interrupt 0x21 vector table entry */
+   // makeInterrupt21();
+
+    /* Test Step 5: readString via Int 0x21 (AX=1) */
+   // interrupt(0x21, 1, line, 0, 0);
+
+    /* Test Step 5: printString via Int 0x21 (AX=0) */
+   // interrupt(0x21, 0, line, 0, 0);
+
+   // while (1);  Loop infinitely so kernel doesn't crash
+}
+
+/* Step 1: Print String using BIOS Interrupt 0x10 */
+void printString(char* chars) {
+    int i = 0;
+    while (chars[i] != 0x0) {
+        int ax = 0x0E * 256 + chars[i];
+        interrupt(0x10, ax, 0, 0, 0);
+        i++;
+    }
+}
+
+/* Helper function for printing a single character */
+void printChar(char c) {
+    int ax = 0x0E * 256 + c;
+    interrupt(0x10, ax, 0, 0, 0);
+}
+
+/* Step 2: Read String from Keyboard using BIOS Interrupt 0x16 */
+void readString(char* line) {
+    int i = 0;
+    char key = 0;
+
+    while (1) {
+        key = (char)interrupt(0x16, 0, 0, 0, 0);
+
+        /* Handle Enter Key */
+        if (key == 0x0D) {
+            line[i] = 0x0D;
+            line[i + 1] = 0x0A;  /* Line Feed */
+            line[i + 2] = 0x00; /* End of String */
+            printChar(0x0D);
+            printChar(0x0A);
+            return;
+        }
+        /* Handle Backspace Key */
+        else if (key == 0x08) {
+            if (i > 0) {
+                i--;
+                printChar(0x08); /* Move cursor back */
+                printChar(' ');  /* Overwrite character */
+                printChar(0x08); /* Move cursor back */
+            }
+        }
+        /* Printable Characters */
+        else {
+            line[i] = key;
+            printChar(key); /* Echo character to screen */
+            i++;
+        }
+    }
+}
+
+/* Step 3: Read Sector from Disk using BIOS Interrupt 0x13 */
+void readSector(char* buffer, int sector) {
+    int relativeSector = sector + 1;
+    int head = 0;
+    int track = 0;
+
+    int ax = 2 * 256 + 1;                  /* AH = 2 (read), AL = 1 sector */
+    int cx = track * 256 + relativeSector; /* CH = track (0), CL = sector + 1 */
+    int dx = head * 256 + 0x80;            /* DH = head (0), DL = hard drive (0x80) */
+
+    interrupt(0x13, ax, buffer, cx, dx);
+}
+/* Helper function to compare filenames up to 6 characters */
+int matchFileName(char* fileName, char* dirEntry) {
+    int i;
+    for (i = 0; i < 6; i++) {
+        /* If input string ends before 6 chars, pad comparison with null bytes */
+        char c = fileName[i];
+        if (c == '\r' || c == '\n' || c == '\0') {
+            c = 0x00;
+        }
+        if (c != dirEntry[i]) {
+            return 0; /* No match */
+        }
+    }
+    return 1; /* Match found */
+}
+
+/* Reads a file by name into a memory buffer */
+void readFile(char* fileName, char* buffer, int* sectorsRead) {
+    char dir[512];
+    int fileentry;
+    int sectorIndex;
+    int found = 0;
+
+    *sectorsRead = 0;
+
+    /* 1. Read Sector 2 (Directory) into local buffer */
+    readSector(dir, 2);
+
+    /* 2. Step through all 16 entries (each 32 bytes wide) */
+    for (fileentry = 0; fileentry < 512; fileentry += 32) {
+        /* Skip unused directory entries */
+        if (dir[fileentry] == 0x00) {
+            continue;
+        }
+
+        /* Check if the filename matches */
+        if (matchFileName(fileName, &dir[fileentry])) {
+            found = 1;
+            break;
+        }
+    }
+
+    /* If not found, exit with sectorsRead = 0 */
+    if (!found) {
+        return;
+    }
+
+    /* 3. Load sectors sequentially into buffer */
+    for (sectorIndex = 6; sectorIndex < 32; sectorIndex++) {
+        int currentSector = dir[fileentry + sectorIndex];
+
+        /* Sector 0 indicates end of file */
+        if (currentSector == 0) {
+            break;
+        }
+
+        /* Read sector into buffer offset by 512 bytes each iteration */
+        readSector(buffer + (*sectorsRead * 512), currentSector);
+        (*sectorsRead)++;
+    }
+}
+
+/* Step 4 & 5: Service Handler for Interrupt 0x21 */
+void handleInterrupt21(int ax, int bx, int cx, int dx) {
+    if (ax == 0) {
+        printString((char*)bx);
+    } else if (ax == 1) {
+        readString((char*)bx);
+    } else if (ax == 2) {
+        readSector((char*)bx, cx);
+    } else if (ax == 3) { // AX = 3: Read File, BX = fileName, CX = buffer, DX = sectorRead
+        readFile((char*)bx, (char*)cx, (int*)dx);
+    } else {
+          printString("Error: Invalid Interrupt call\r\n");
+       // printString("Error: Invalid system call interrupt AX value.");
+    }
+}
