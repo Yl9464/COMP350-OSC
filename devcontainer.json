@@ -1,0 +1,6 @@
+{
+  "name": "OS Development Environment",
+  "build": {
+    "dockerfile": "../Dockerfile"
+  }
+}
