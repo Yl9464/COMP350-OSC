@@ -1,109 +1,177 @@
-// Loads a file into the file system
-// This should be compiled with gcc and run outside of the OS
+// loadFile.c
+// Loads a file from the host operating system into diskc.img
+// Compile using GCC: gcc loadFile.c -o loadFile
+
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
 int main(int argc, char *argv[])
 {
     int i;
+
     if (argc < 2)
     {
-        printf("Specify file name to load\n");
-        return 0;
+        printf("Usage: %s <filename>\n", argv[0]);
+        return 1;
     }
-    // open the source file
-    FILE *loadFil;
-    loadFil = fopen(argv[1], "r");
-    if (loadFil == 0)
+
+    // 1. Open the source file in binary read mode
+    FILE *loadFil = fopen(argv[1], "rb");
+    if (loadFil == NULL)
     {
-        printf("File not found\n");
-        return 0;
+        printf("Error: File '%s' not found.\n", argv[1]);
+        return 1;
     }
-    // open the floppy image
-    FILE *floppy;
-    floppy = fopen("diskc.img", "r+");
-    if (floppy == 0)
+
+    // 2. Open the floppy disk image in binary read/write mode
+    FILE *floppy = fopen("diskc.img", "r+b");
+    if (floppy == NULL)
     {
-        printf("diskc.img not found\n");
-        return 0;
+        printf("Error: diskc.img not found.\n");
+        fclose(loadFil);
+        return 1;
     }
-    // load the disk map
+
+    // 3. Load the disk map from Sector 1 (offset 512)
     char map[512];
     fseek(floppy, 512, SEEK_SET);
     for (i = 0; i < 512; i++)
+    {
         map[i] = fgetc(floppy);
-    // load the directory
+    }
+
+    // 4. Load the directory from Sector 2 (offset 1024)
     char dir[512];
     fseek(floppy, 512 * 2, SEEK_SET);
     for (i = 0; i < 512; i++)
+    {
         dir[i] = fgetc(floppy);
-    // find a free entry in the directory
-    for (i = 0; i < 512; i = i + 0x20)
+    }
+
+    // 5. Find a free 32-byte entry in the directory
+    int dirIndex = -1;
+    for (i = 0; i < 512; i += 32)
+    {
         if (dir[i] == 0)
+        {
+            dirIndex = i;
             break;
-    if (i == 512)
-    {
-        printf("Not enough room in directory\n");
-        return 0;
+        }
     }
-    int dirindex = i;
-    // fill the name field with 00s first
-    for (i = 0; i < 6; i++)
-        dir[dirindex + i] = 0x00;
-    // copy the name over
+
+    if (dirIndex == -1)
+    {
+        printf("Error: Directory is full (max 16 files).\n");
+        fclose(loadFil);
+        fclose(floppy);
+        return 1;
+    }
+
+    // 6. Clear directory name field and write filename (up to 6 characters)
     for (i = 0; i < 6; i++)
     {
-        if (argv[1][i] == 0)
+        dir[dirIndex + i] = 0x00;
+    }
+
+    for (i = 0; i < 6; i++)
+    {
+        if (argv[1][i] == '\0')
             break;
-        dir[dirindex + i] = argv[1][i];
+        dir[dirIndex + i] = argv[1][i];
     }
-    dirindex = dirindex + 6;
-    // find free sectors and add them to the file
-    int sectcount = 0;
+
+    int dirSectorPtr = dirIndex + 6; // Directory offset for storing sector numbers
+    int sectCount = 0;
+
+    // 7. Read host file and write sector-by-sector to floppy image
     while (!feof(loadFil))
     {
-        if (sectcount == 26)
+        if (sectCount == 26)
         {
-            printf("Not enough space in directory entry for file\n");
-            return 0;
+            printf("Error: File exceeds max directory capacity (26 sectors / 13 KB).\n");
+            fclose(loadFil);
+            fclose(floppy);
+            return 1;
         }
-        // find a free map entry
-        for (i = 3; i < 256; i++)
-            if (map[i] == 0)
-                break;
-        if (i == 256)
-        {
-            printf("Not enough room for file\n");
-            return 0;
-        }
-        // mark the map entry as taken
-        map[i] = 0xFF;
-        // mark the sector in the directory entry
-        dir[dirindex] = i;
-        dirindex++;
-        sectcount++;
-        // move to the sector and write to it
-        fseek(floppy, i * 512, SEEK_SET);
+
+        // Buffer sector content and read up to 512 bytes
+        char sectorBuffer[512];
+        int bytesRead = 0;
+
         for (i = 0; i < 512; i++)
         {
-            if (feof(loadFil))
+            int c = fgetc(loadFil);
+            if (c == EOF)
             {
-                fputc(0x0, floppy);
+                // Zero-pad remainder of the sector
+                for (; i < 512; i++)
+                {
+                    sectorBuffer[i] = 0x00;
+                }
                 break;
             }
-            else
+            sectorBuffer[i] = (char)c;
+            bytesRead++;
+        }
+
+        // Stop if EOF reached right at sector boundary
+        if (bytesRead == 0)
+        {
+            break;
+        }
+
+        // Find a free map entry (Sectors 0-2 are system reserved)
+        int freeSector = -1;
+        for (i = 3; i < 256; i++)
+        {
+            if (map[i] == 0)
             {
-                char c = fgetc(loadFil);
-                fputc(c, floppy);
+                freeSector = i;
+                break;
             }
         }
+
+        if (freeSector == -1)
+        {
+            printf("Error: Disk is full.\n");
+            fclose(loadFil);
+            fclose(floppy);
+            return 1;
+        }
+
+        // Mark sector as used in map and record sector in directory entry
+        map[freeSector] = 0xFF;
+        dir[dirSectorPtr] = (char)freeSector;
+        dirSectorPtr++;
+        sectCount++;
+
+        // Write entire 512-byte sector to disk image
+        fseek(floppy, freeSector * 512, SEEK_SET);
+        for (i = 0; i < 512; i++)
+        {
+            fputc(sectorBuffer[i], floppy);
+        }
     }
-    // write the map and directory back to the floppy image
+
+    // 8. Write updated disk map back to Sector 1 (offset 512)
     fseek(floppy, 512, SEEK_SET);
     for (i = 0; i < 512; i++)
+    {
         fputc(map[i], floppy);
+    }
+
+    // 9. Write updated directory back to Sector 2 (offset 1024)
     fseek(floppy, 512 * 2, SEEK_SET);
     for (i = 0; i < 512; i++)
+    {
         fputc(dir[i], floppy);
-    fclose(floppy);
+    }
+
+    // 10. Flush and close handles
     fclose(loadFil);
+    fclose(floppy);
+
+    printf("File '%s' successfully written to diskc.img (%d sectors used).\n", argv[1], sectCount);
     return 0;
 }

@@ -1,3 +1,5 @@
+/* kernel.c
+/*Project B -Lensi Gondaliya, Nina Aubourg, Ying Lu */
 /* Function Declarations */
 void printString(char *);
 void printChar(char);
@@ -13,239 +15,232 @@ extern void makeInterrupt21();
 extern int interrupt(int, int, int, int, int);
 extern void putInMemory(int, int, char); /* step 2 */
 extern void launchProgram(int);			 /* step 2 */
-int main()
+
+main()
 {
-	// step2
 	makeInterrupt21();
-	interrupt(0x21, 4, "tstpr1", 0, 0);
+	interrupt(0x21, 0x400, (int)"tstpr1", 0, 0);
 	while (1)
 		;
-	// Step 1
-	// char buffer[13312]; /*this is the maximum size of a file*/
-	// int sectorsRead;
-	// makeInterrupt21();
-	// interrupt(0x21, 3, "messag", buffer, &sectorsRead); /*read the file into buffer*/
-	// if (sectorsRead > 0)
-	// 	interrupt(0x21, 0, buffer, 0, 0); /*print out the file*/
-	// else
-	// 	interrupt(0x21, 0, "messag not found\r\n", 0, 0); /*no sectors read? then print an error*/
-	// while (1)
-	// 	; /*hang up*/
-}
+	// char buffer[13312]; // Buffer sized for max file size (26 sectors * 512 bytes)
+	// int sectorsRead = 0;
 
-/* Load and Execute Program */
+	// // Execute INT 0x21 service 3
+	// interrupt(0x21, 3, 'messag', buffer, &sectorsRead);
+
+	// if (sectorsRead > 0)
+	// {
+	// 	// File successfully loaded into buffer
+	// 	printString(buffer);
+	// }
+	// else
+	// {
+	// 	printString("File not found.\r\n\0");
+	// }
+
+	// while (1)
+	// 	;
+}
 void executeProgram(char *name)
 {
-	char buffer[13312];
-	int sectorsRead;
+	char buffer[13312]; // Buffer for maximum file size (26 sectors * 512 bytes)
+	int sectorsRead = 0;
+	int totalBytes;
 	int i;
-	int segment = 0x2000;
 
-	/* 1. Call readFile to load the file into a buffer */
+	// 1. Load the executable file into local buffer using readFile
 	readFile(name, buffer, &sectorsRead);
 
-	/* Check if the file was found and read successfully */
-	if (sectorsRead > 0)
-	{
-		/* 2. Transfer the file from buffer into memory at segment 0x2000 */
-		for (i = 0; i < 13312; i++)
-		{
-			putInMemory(segment, i, buffer[i]);
-		}
-
-		/* 3. Call launchProgram (does not return) */
-		launchProgram(segment);
-	}
-	else
-	{
-		printString("Error: Program not found.\r\n");
-	}
-}
-
-/*Read Sector from Disk using BIOS Interrupt 0x13 */
-void readSector(char *buffer, int sector)
-{
-	int relativeSector = sector + 1;
-	int head = 0;
-	int track = 0;
-
-	int ax = 2 * 256 + 1;				   /* AH = 2 (read), AL = 1 sector */
-	int cx = track * 256 + relativeSector; /* CH = track (0), CL = sector + 1 */
-	int dx = head * 256 + 0x80;			   /* DH = head (0), DL = hard drive (0x80) */
-
-	interrupt(0x13, ax, buffer, cx, dx);
-}
-/* Helper function to compare filenames up to 6 characters */
-int matchFileName(char *fileName, char *dirEntry)
-{
-	int i;
-	for (i = 0; i < 6; i++)
-	{
-		char c = fileName[i]; // extracts char at i from fileName
-		if (c == '\r' || c == '\n' || c == '\0')
-		{			  // check if c is a return, newline, or null terminator character.
-			c = 0x00; // if so replace is null byte
-		}
-		if (c != dirEntry[i]) // compare normalized fileName char against corresponding byte in dirEntry[i]
-		{
-			return 0; // if no match, returns 0 to signal mismatch and exit early
-		}
-	}
-	return 1; // returns 1, signalling successful match
-}
-
-/* Reads a file by name into a memory buffer */
-void readFile(char *fileName, char *buffer, int *sectorsRead)
-{
-	unsigned char dir[512]; /* Use unsigned char to avoid negative sector numbers */
-	int fileentry;
-	int sectorIndex;
-	int found = 0;
-
-	*sectorsRead = 0;
-
-	/* 1. Read Sector 2 (Directory) into local buffer */
-	readSector((char *)dir, 2);
-
-	/* 2. Step through all 16 entries (each 32 bytes wide) */
-	for (fileentry = 0; fileentry < 512; fileentry += 32)
-	{
-		/* Skip unused directory entries */
-		if (dir[fileentry] == 0x00)
-		{
-			continue;
-		}
-
-		/* Check if the filename matches */
-		if (matchFileName(fileName, (char *)&dir[fileentry]))
-		{
-			found = 1;
-			break;
-		}
-	}
-
-	/* If not found, exit with sectorsRead = 0 */
-	if (!found)
+	// If the file was not found (sectorsRead == 0), abort execution
+	if (sectorsRead == 0)
 	{
 		return;
 	}
 
-	/* 3. Load sectors sequentially into buffer */
-	for (sectorIndex = 6; sectorIndex < 32; sectorIndex++)
+	// 2. Transfer file contents byte-by-byte into memory segment 0x2000 offset i
+	totalBytes = sectorsRead * 512;
+	for (i = 0; i < totalBytes; i++)
 	{
-		int currentSector = dir[fileentry + sectorIndex];
+		putInMemory(0x2000, i, buffer[i]);
+	}
 
-		/* Sector 0 indicates end of file */
-		if (currentSector == 0)
+	// 3. Launch program at segment 0x2000 (control never returns from launchProgram)
+	launchProgram(0x2000);
+}
+void readSector(char *buffer, int sector)
+{
+	int AH = 2;
+	int AL = 1;		  // sectors to read
+	int BX = *buffer; //(pass your char* array here)
+	int CH = 0;		  // track #
+	int CL = sector + 1;
+	int DH = 0;	   // head number
+	int DL = 0x80; // (for the hard disk, use 0x80)
+
+	int AX = AH * 256 + AL;
+	int CX = CH * 256 + CL;
+	int DX = DH * 256 + DL;
+
+	// call interrupt 0x13
+	interrupt(0x13, AX, buffer, CX, DX);
+}
+void readFile(char *filename, char *buffer, int *sectorsRead)
+{
+	char dir[512];
+	int entry, i, s;
+	int fileFound = 0;
+	int fileEntry = -1;
+	int entryOffset;
+	int match;
+	int entrySectorOffset;
+	unsigned char sectorNum;
+
+	// 1. Load directory sector (Sector 2)
+	readSector(dir, 2);
+
+	// 2. Search 16 directory entries (32 bytes each)
+	for (entry = 0; entry < 16; entry++)
+	{
+		entryOffset = entry * 32;
+
+		// Skip empty directory entries
+		if (dir[entryOffset] == 0)
+			continue;
+
+		match = 1;
+		for (i = 0; i < 6; i++)
 		{
-			break;
+			if (filename[i] != dir[entryOffset + i])
+			{
+				match = 0;
+				break;
+			}
+			if (filename[i] == '\0')
+			{
+				break;
+			}
 		}
 
-		/* Read sector into buffer offset by 512 bytes each iteration */
-		readSector(buffer + (*sectorsRead * 512), currentSector);
+		if (match)
+		{
+			fileFound = 1;
+			fileEntry = entry;
+			break;
+		}
+	}
+
+	// File not found: set sectors read to 0 and return
+	if (!fileFound)
+	{
+		*sectorsRead = 0;
+		return;
+	}
+
+	// 3. Read the file sector-by-sector into the buffer
+	*sectorsRead = 0;
+	entrySectorOffset = fileEntry * 32 + 6;
+
+	for (s = 0; s < 26; s++)
+	{
+		sectorNum = (unsigned char)dir[entrySectorOffset + s];
+
+		// Sector 0 marks end of file allocation
+		if (sectorNum == 0)
+			break;
+
+		readSector(buffer, sectorNum);
+		buffer += 512;
 		(*sectorsRead)++;
 	}
 }
 
-void handleInterrupt21(int ax, int bx, int cx, int dx) // called when software interrupt 0x21 is triggered
-{
-	if (ax == 0) // 0 (printing a str)
-	{
-		printString((char *)bx);
-		// cast bx from int to char*
-		// call printString() to display it
-	}
-	else if (ax == 1) // 1 (reading keyboard Input)
-	{
-		readString((char *)bx);
-		// cast bx to char* to specify memory buffer location
-		// call readString() to populate buffer with user input
-	}
-	else if (ax == 2) // read raw sector reading
-	{
-		readSector((char *)bx, cx);
-		// cast bx to char* as destination buffer address in memory
-		// pass cs as target disk sector
-	}
-	else if (ax == 3) // check if ax =3 if so…
-	{				  // read a file
-
-		readFile((char *)bx, (char *)cx, (int *)dx);
-		// bx = file to read
-		// cx = dest memory address of file contents
-		// dx = point to int where readFile() write total number of sectors read
-	}
-
-	else if (ax == 4)
-	{ // check if ax =4 if so…
-		// execute program (load and execute binary from disk
-		executeProgram((char *)bx);
-		// bx = program name to execute
-	}
-	else // error block if ax params service code doesn’t equal 0, 2, ,3 or 4
-	{
-		printString("Error: Invalid system call interrupt AX value.\r\n");
-		// output error message over console with problem AX value
-	}
-}
-
-/*Read String from Keyboard using BIOS Interrupt 0x16 */
-void readString(char *line)
+void readString(char *chars) // empty char array that can hold 80 elements
 {
 	int i = 0;
-	char key = 0;
-
+	char c = 0;
 	while (1)
-	{
-		key = (char)interrupt(0x16, 0, 0, 0, 0);
+	{ // repeat calls
+		// BIOS read keypress
+		// call interrupt 0x16 repeatedly and save resutls...
+		c = (char)interrupt(0x16, 0, 0, 0, 0);
+		//...until enter key is pressed (ASCII 0xd)
+		if (c == 0x0D)
+		{
+			chars[i] = 0x0A;	 // line feed
+			chars[i + 1] = 0x00; // indicat end of string
 
-		/* Handle Enter Key */
-		if (key == 0x0D)
-		{
-			line[i] = 0x0D;
-			line[i + 1] = 0x0A; /* Line Feed */
-			line[i + 2] = 0x00; /* End of String */
-			printChar(0x0D);
-			printChar(0x0A);
-			return;
+			// prinst chars to screen
+			interrupt(0x10, 0x0E0D, 0, 0, 0); // move curosor back to start of line
+			interrupt(0x10, 0x0E0A, 0, 0, 0); // move cursor down to next line
+			break;
 		}
-		/* Handle Backspace Key */
-		else if (key == 0x08)
+		// handle back space (ASCII 0x8)
+		else if (c == 0x08)
 		{
+			// print back space to screen, and decrease array index by 1
 			if (i > 0)
 			{
-				i--;
-				printChar(0x08); /* Move cursor back */
-				printChar(' ');	 /* Overwrite character */
-				printChar(0x08); /* Move cursor back */
+				i--; // decrease array index
+					 // erase char on screen
+				interrupt(0x10, 0x0E08, 0, 0, 0);
+				interrupt(0x10, 0x0E20, 0, 0, 0);
+				interrupt(0x10, 0x0E08, 0, 0, 0);
 			}
 		}
-		/* Printable Characters */
+		// print char
 		else
 		{
-			line[i] = key;
-			printChar(key); /* Echo character to screen */
+			chars[i] = c;
 			i++;
+
+			// show char
+			interrupt(0x10, 0x0E00 + c, 0, 0, 0);
 		}
 	}
 }
 
-/*Print String using BIOS Interrupt 0x10 */
 void printString(char *chars)
-
 {
 	int i = 0;
 	while (chars[i] != 0x0)
 	{
-		int ax = 0x0E * 256 + chars[i];
-		interrupt(0x10, ax, 0, 0, 0);
+		interrupt(0x10, 0xe * 256 + chars[i], 0, 0, 0);
 		i++;
 	}
 }
-/* Helper function for printing a single character */
 
 void printChar(char c)
 {
-	int ax = 0x0E * 256 + c;
-	interrupt(0x10, ax, 0, 0, 0);
+	interrupt(0x10, 0xe * 256 + c, 0, 0, 0);
+}
+
+void handleInterrupt21(int ax, int bx, int cx, int dx)
+{
+	// printString("Hello from interrupt 21!\r\n");
+	if (ax == 0)
+	{
+		printString((char *)bx); // print str
+	}
+	else if (ax == 1)
+	{
+		readString((char *)bx); // read string into buffer
+	}
+	else if (ax == 2)
+	{
+		readSector((char *)bx, cx); // read sector at CX into buffe
+	}
+	else if (ax == 3)
+	{
+		readFile((char *)bx, (char *)cx, (int *)dx);
+	}
+	else if (ax == 4)
+	{
+		// AX = 4: Load program and execute it
+		// BX = address of program name string
+		executeProgram((char *)bx);
+	}
+	else
+	{
+		printString("Error: function not found");
+	}
 }

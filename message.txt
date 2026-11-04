@@ -1,2 +1,1 @@
-Project B - Lensi Gondaliya, Nina Aubourg, Ying Lu 
-"If this message prints out, then your readSector function is working correctly!"
+"Please lord make this work"
