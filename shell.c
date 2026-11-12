@@ -19,6 +19,15 @@ main()
                 syscall(0, "File not found!\r\n");
             }
         }
+        /* Step 6: exec filename - load and run a program */
+        else if (line[0] == 'e' && line[1] == 'x' && line[2] == 'e' && line[3] == 'c' && line[4] == ' ') {
+            syscall(3, line + 5, buffer, &sectorsRead);
+            if (sectorsRead > 0) {
+                syscall(4, line + 5);
+            } else {
+                syscall(0, "Program not found!\r\n");
+            }
+        }
         else {
             syscall(0, "Bad Command!\r\n");
         }
