@@ -13,6 +13,7 @@ void readFile();
 void executeProgram();
 void putInMemory();
 void launchProgram();
+void terminate();
 
 /* External Assembly Functions */
 void makeInterrupt21();
@@ -23,7 +24,7 @@ int main() {
     int sectorsRead;
 
     makeInterrupt21();
-    interrupt(0x21, 4, "tstpr1", 0, 0);
+    interrupt(0x21, 4, "tstpr2", 0, 0);
 
     interrupt(0x21, 3, "messag", buffer, &sectorsRead);
 
@@ -183,6 +184,8 @@ void handleInterrupt21(int ax, int bx, int cx, int dx) {
         readFile((char*)bx, (char*)cx, (int*)dx);
     } else if (ax == 4) {
         executeProgram((char*)bx);
+    } else if (ax == 5) {
+        terminate();
     } else {
           printString("Error: Invalid Interrupt call\r\n");
 
@@ -205,4 +208,9 @@ void executeProgram(char *name) {
         putInMemory(0x2000, i, buffer[i]);
     }
     launchProgram(0x2000);
+}
+
+/* Step 3: Terminate program (for now, hang up) */
+void terminate() {
+    while (1);
 }

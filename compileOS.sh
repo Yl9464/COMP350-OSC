@@ -12,3 +12,6 @@ as86 userlib.asm -o userlib.o
 bcc -ansi -c -o tstpr1.o tstpr1.c
 ld86 -d -o tstpr1 tstpr1.o userlib.o
 ./loadFile tstpr1
+bcc -ansi -c -o tstpr2.o tstpr2.c
+ld86 -d -o tstpr2 tstpr2.o userlib.o
+./loadFile tstpr2
