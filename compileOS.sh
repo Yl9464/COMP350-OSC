@@ -13,7 +13,6 @@ ld86 -o kernel -d kernel_c.o kernel_asm.o
 #Part B ~ dd if=kernel of=diskc.img bs=512 conv=notrunc seek=3 || copy to diskc.img at sector
 ./loadFile kernel
 #put message.txt at sector 30
-dd if=message.txt of=diskc.img bs=512 count=1 seek=30 conv=notrunc
 ./loadFile message.txt #part C 
 #run simulator
 java -jar simulator.jar
