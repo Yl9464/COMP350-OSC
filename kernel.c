@@ -20,20 +20,8 @@ void makeInterrupt21();
 int interrupt();
 
 int main() {
-    char buffer[13312];
-    int sectorsRead;
-
     makeInterrupt21();
-    interrupt(0x21, 4, "tstpr2", 0, 0);
-
-    interrupt(0x21, 3, "messag", buffer, &sectorsRead);
-
-    if (sectorsRead > 0) {
-        interrupt(0x21, 0, buffer, 0, 0);
-    } else {
-        interrupt(0x21, 0, "messag not found\r\n", 0, 0);
-    }
-
+    interrupt(0x21, 4, "shell", 0, 0);
     while (1);
     return 0;
 }
@@ -210,7 +198,14 @@ void executeProgram(char *name) {
     launchProgram(0x2000);
 }
 
-/* Step 3: Terminate program (for now, hang up) */
+/* Step 3: Terminate program - reloads the shell */
 void terminate() {
-    while (1);
+    char shellname[6];
+    shellname[0] = 's';
+    shellname[1] = 'h';
+    shellname[2] = 'e';
+    shellname[3] = 'l';
+    shellname[4] = 'l';
+    shellname[5] = '\0';
+    executeProgram(shellname);
 }
