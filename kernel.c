@@ -10,6 +10,9 @@ void readSector();
 void handleInterrupt21();
 int matchFileName();
 void readFile();
+void executeProgram();
+void putInMemory();
+void launchProgram();
 
 /* External Assembly Functions */
 void makeInterrupt21();
@@ -20,6 +23,7 @@ int main() {
     int sectorsRead;
 
     makeInterrupt21();
+    interrupt(0x21, 4, "tstpr1", 0, 0);
 
     interrupt(0x21, 3, "messag", buffer, &sectorsRead);
 
@@ -177,9 +181,28 @@ void handleInterrupt21(int ax, int bx, int cx, int dx) {
         readSector((char*)bx, cx);
     } else if (ax == 3) { // AX = 3: Read File, BX = fileName, CX = buffer, DX = sectorRead
         readFile((char*)bx, (char*)cx, (int*)dx);
+    } else if (ax == 4) {
+        executeProgram((char*)bx);
     } else {
           printString("Error: Invalid Interrupt call\r\n");
 
     }
 }
 
+
+/* Step 2: Load a program into memory at segment 0x2000 and run it */
+void executeProgram(char *name) {
+    char buffer[13312];
+    int sectorsRead;
+    int i;
+
+    readFile(name, buffer, &sectorsRead);
+    if (sectorsRead == 0) {
+        printString("program not found\r\n");
+        return;
+    }
+    for (i = 0; i < sectorsRead * 512; i++) {
+        putInMemory(0x2000, i, buffer[i]);
+    }
+    launchProgram(0x2000);
+}
