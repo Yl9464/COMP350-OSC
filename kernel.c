@@ -10,25 +10,18 @@ void readSector();
 void handleInterrupt21();
 int matchFileName();
 void readFile();
+void executeProgram();
+void putInMemory();
+void launchProgram();
+void terminate();
 
 /* External Assembly Functions */
 void makeInterrupt21();
 int interrupt();
 
 int main() {
-    char buffer[13312];
-    int sectorsRead;
-
     makeInterrupt21();
-
-    interrupt(0x21, 3, "messag", buffer, &sectorsRead);
-
-    if (sectorsRead > 0) {
-        interrupt(0x21, 0, buffer, 0, 0);
-    } else {
-        interrupt(0x21, 0, "messag not found\r\n", 0, 0);
-    }
-
+    interrupt(0x21, 4, "shell", 0, 0);
     while (1);
     return 0;
 }
@@ -94,7 +87,7 @@ void readSector(char *buffer, int sector) {
 
     int ax = 2 * 256 + 1;                  /* AH = 2 (read), AL = 1 sector */
     int cx = track * 256 + relativeSector; /* CH = track (0), CL = sector + 1 */
-    int dx = head * 256 + 0x00;            /* DH = head (0), DL = hard drive (0x80) */
+    int dx = head * 256 + 0x80;            /* DH = head (0), DL = hard drive (0x80) */
 
     interrupt(0x13, ax, buffer, cx, dx);
 }
@@ -177,9 +170,42 @@ void handleInterrupt21(int ax, int bx, int cx, int dx) {
         readSector((char*)bx, cx);
     } else if (ax == 3) { // AX = 3: Read File, BX = fileName, CX = buffer, DX = sectorRead
         readFile((char*)bx, (char*)cx, (int*)dx);
+    } else if (ax == 4) {
+        executeProgram((char*)bx);
+    } else if (ax == 5) {
+        terminate();
     } else {
           printString("Error: Invalid Interrupt call\r\n");
 
     }
 }
 
+
+/* Step 2: Load a program into memory at segment 0x2000 and run it */
+void executeProgram(char *name) {
+    char buffer[13312];
+    int sectorsRead;
+    int i;
+
+    readFile(name, buffer, &sectorsRead);
+    if (sectorsRead == 0) {
+        printString("program not found\r\n");
+        return;
+    }
+    for (i = 0; i < sectorsRead * 512; i++) {
+        putInMemory(0x2000, i, buffer[i]);
+    }
+    launchProgram(0x2000);
+}
+
+/* Step 3: Terminate program - reloads the shell */
+void terminate() {
+    char shellname[6];
+    shellname[0] = 's';
+    shellname[1] = 'h';
+    shellname[2] = 'e';
+    shellname[3] = 'l';
+    shellname[4] = 'l';
+    shellname[5] = '\0';
+    executeProgram(shellname);
+}
