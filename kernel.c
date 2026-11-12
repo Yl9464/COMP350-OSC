@@ -94,7 +94,7 @@ void readSector(char *buffer, int sector) {
 
     int ax = 2 * 256 + 1;                  /* AH = 2 (read), AL = 1 sector */
     int cx = track * 256 + relativeSector; /* CH = track (0), CL = sector + 1 */
-    int dx = head * 256 + 0x00;            /* DH = head (0), DL = hard drive (0x80) */
+    int dx = head * 256 + 0x80;            /* DH = head (0), DL = hard drive (0x80) */
 
     interrupt(0x13, ax, buffer, cx, dx);
 }
