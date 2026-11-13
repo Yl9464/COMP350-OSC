@@ -1,3 +1,4 @@
+; Project C - Lensi Gondaliya, Nina Aubourg, Ying Lu
 ;bootload.asm 
 ; Project B - Lensi Gondaliya, Nina Aubourg, Ying Lu 
 ;This is a simple bootloader that loads and executes a kernel at sector 3

@@ -1,3 +1,4 @@
+; Project C - Lensi Gondaliya, Nina Aubourg, Ying Lu
 ;kernel.asm
 ;Margaret Black, 2007
 

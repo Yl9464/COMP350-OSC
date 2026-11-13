@@ -1,3 +1,4 @@
+/* Project C - Lensi Gondaliya, Nina Aubourg, Ying Lu */
 #include <stdio.h>
 
 int main(int argc, char* argv[])

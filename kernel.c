@@ -1,6 +1,6 @@
 
 /* kernel.c */
-/* Nina A */
+/* Project C - Lensi Gondaliya, Nina Aubourg, Ying Lu */
 
 /* Function Declarations */
 void printString();
